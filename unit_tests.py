@@ -17,11 +17,13 @@ def validate_syntax(source: str):
     return False, traceback.format_exc()
   
 
-def iterate_syntax(client: OpenAI, source: str, max_iter=10):
+def iterate_syntax(client: OpenAI, source: str, first_err: str, max_iter=10):
   """
   Verify `source` has correct syntax; iterates with the LLM until the syntax is valid or `max_iter` is reached
   """
   updated_source = source
+  last_err = first_err
+
   for _ in range(0, max_iter):
     completion = client.chat.completions.create(
       model='oai-gpt-4o-mini' if os.getenv("USE_MINI_MODEL", False) else 'oai-gpt-4o-structured',
@@ -61,7 +63,7 @@ def iterate_syntax(client: OpenAI, source: str, max_iter=10):
             ```
 
             # Error information #
-            `{err}`
+            `{last_err}`
           """)
         }
       ]
@@ -71,6 +73,7 @@ def iterate_syntax(client: OpenAI, source: str, max_iter=10):
     updated_source = response["updated_file"]
     (valid, err) = validate_syntax(updated_source)
     if valid: break
+    last_err = err
 
   return updated_source
 
@@ -82,10 +85,7 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
   generate a test file at `test_path` which will provide a comprehensive set of unit tests for
   each function, attempting to take into account any sources of logical vulnerabilities.
   """
-  file_path = os.path.realpath(file_path)
-  test_path = os.path.realpath(test_path)
-
-  file_structure = util.output_project_structure(util.get_file_structure(os.getcwd()))
+  file_structure = "\n".join(util.get_project_structure())
 
   with open(file_path, "r") as f:
     content = f.read()
@@ -197,7 +197,9 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
           "role": "user",
           "content": dedent(f"""
             # Project structure #
-            `{file_structure}`         
+            ```
+            {file_structure}
+            ```         
             
             # File path #
             `{file_path}`
@@ -217,9 +219,9 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
     # Ensure correct syntax of the test file
     response = json.loads(completion.choices[0].message.content)
     pytest_content = response["pytest_file_content"]
-    (valid, _) = validate_syntax(pytest_content)
+    (valid, err) = validate_syntax(pytest_content)
     if not valid:
-      pytest_content = iterate_syntax(client, pytest_content)
+      pytest_content = iterate_syntax(client, pytest_content, err)
 
     # Dump result for target file to test script
     with open(test_path, "w") as test_file:
