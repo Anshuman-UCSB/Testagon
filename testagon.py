@@ -24,7 +24,7 @@ def generate_tests(auto: bool):
     print("Generating invariants...")
     # generate_invariants(client, ...)
     print("Generating initial unit tests...")
-    # unit_tests.generate_initial(client)
+    # unit_tests.generate_initial(client, ...)
 
 def main():
     parser = argparse.ArgumentParser(

@@ -1,6 +1,6 @@
-import sys
 import os
 import json
+import util
 from openai import OpenAI
 from textwrap import dedent
 
@@ -8,6 +8,8 @@ from textwrap import dedent
 def generate_initial(client: OpenAI, file_path: str, test_path: str):
   file_path = os.path.realpath(file_path)
   test_path = os.path.realpath(test_path)
+
+  file_structure = util.output_project_structure(util.get_file_structure(os.getcwd()))
 
   with open(file_path, "r") as f:
     content = f.read()
@@ -41,7 +43,7 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
                       "items": {
                         "type": "object",
                         "properties": {
-                          # Explicitly state goal of the test case to reinforce LLM
+                          # Explicitly state goal of the test case to reinforce proper generation
                           "justification": {"type": "string"},
                           # Input value
                           "input": {"type": "string"},
@@ -73,11 +75,11 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
         {
           "role": "system",
           "content": dedent("""
-            The user will provide the canonical path to a Python file, the content of the file, and the canonical
-            path of the pytest test script location. Your job is to generate a comprehensive set
-            of pytest unit tests for each function, taking into account edge cases and areas where the programmer's
-            logic may have been faulty. In particular, pay close attention to cases where an output could lead to
-            a logic-based security vulnerability.
+            The user will provide the directory structure of their project, the canonical path to a Python file, 
+            the content of the file, and the canonical path of the pytest test script location. Your job is to 
+            generate a comprehensive set of pytest unit tests for each function, taking into account edge cases 
+            and areas where the programmer's logic may have been faulty. In particular, pay close attention to 
+            cases where an output could lead to a logic-based security vulnerability.
 
             Every function will be labeled with a list of invariants held by variables in the function.
             These invariants will describe arithmetic and logical relationships between inputs, control, loops,
@@ -117,8 +119,10 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
         },
         {
           "role": "user",
-          # TODO: Give LLM information on entire project structure; easier to detect which dependencies are internal/external
           "content": dedent(f"""
+            # Project structure #
+            `{file_structure}`         
+            
             # File path #
             `{file_path}`
 
