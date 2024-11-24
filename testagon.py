@@ -31,6 +31,7 @@ def generate_tests(auto: bool):
 
     # Spawn threads to generate tests for each file concurrently
     for path in util.get_project_structure():
+        if path.startswith("./tests/"): continue
         if not path.endswith(".py"): continue
         test_dir = os.path.relpath(os.path.join("tests", os.path.dirname(path)), os.getcwd())
         os.makedirs(os.path.join("tests", os.path.dirname(path)), exist_ok=True)
