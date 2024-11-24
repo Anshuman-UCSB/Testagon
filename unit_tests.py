@@ -1,11 +1,87 @@
 import os
 import json
 import util
+import ast
+import traceback
 from openai import OpenAI
 from textwrap import dedent
 
-# Assumes each function already has a set of invariants in the docstring
+def validate_syntax(source: str):
+  """
+  Validates the syntax of a Python program from `source`
+  """
+  try:
+    ast.parse(source)
+    return True, None
+  except SyntaxError:
+    return False, traceback.format_exc()
+  
+
+def iterate_syntax(client: OpenAI, source: str, max_iter=10):
+  """
+  Verify `source` has correct syntax; iterates with the LLM until the syntax is valid or `max_iter` is reached
+  """
+  updated_source = source
+  for _ in range(0, max_iter):
+    completion = client.chat.completions.create(
+      model='oai-gpt-4o-mini' if os.getenv("USE_MINI_MODEL", False) else 'oai-gpt-4o-structured',
+      response_format={
+        "type": "json_schema",
+        "json_schema": {
+          "name": "validate_syntax",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "explanation": {"type": "string"},
+              "fix": {"type": "string"},
+              "updated_file": {"type": "string"}
+            },
+            "required": ["explanation", "fix", "updated_file"],
+            "additionalProperties": False
+          }
+        }
+      },
+      messages=[
+        {
+          "role": "system",
+          "content": dedent("""
+            The user will provide a Python file that is syntactically incorrect. They will also
+            provide a traceback of the syntax error, informing you where it is. `explanation` is
+            where you should describe the syntax error, `fix` is where you should describe how
+            to fix it, and `updated_file` is the entire file content with the syntax error fixed. 
+            Do not change the behavior of the program except to fix the syntax error.
+          """)
+        },
+        {
+          "role": "user",
+          "content": dedent(f"""
+            # File #
+            ```python
+            {updated_source}
+            ```
+
+            # Error information #
+            `{err}`
+          """)
+        }
+      ]
+    )
+
+    response = json.loads(completion.choices[0].message.content)
+    updated_source = response["updated_file"]
+    (valid, err) = validate_syntax(updated_source)
+    if valid: break
+
+  return updated_source
+
+
+
 def generate_initial(client: OpenAI, file_path: str, test_path: str):
+  """
+  Given a `file_path` inside the target project with the invariants listed in the docstring,
+  generate a test file at `test_path` which will provide a comprehensive set of unit tests for
+  each function, attempting to take into account any sources of logical vulnerabilities.
+  """
   file_path = os.path.realpath(file_path)
   test_path = os.path.realpath(test_path)
 
@@ -138,7 +214,13 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
       ]
     )
 
-    # Dump result for target file to test script
+    # Ensure correct syntax of the test file
     response = json.loads(completion.choices[0].message.content)
+    pytest_content = response["pytest_file_content"]
+    (valid, _) = validate_syntax(pytest_content)
+    if not valid:
+      pytest_content = iterate_syntax(client, pytest_content)
+
+    # Dump result for target file to test script
     with open(test_path, "w") as test_file:
-      test_file.write(response["pytest_file_content"])
+      test_file.write(pytest_content)
