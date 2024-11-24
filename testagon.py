@@ -1,5 +1,13 @@
 import argparse
 import os
+from openai import OpenAI
+from dotenv import load_dotenv
+import unit_tests
+
+
+# Initialize OpenAI client
+load_dotenv()
+client = OpenAI(api_key=os.getenv("API_KEY"), base_url=os.getenv("BASE_URL"))
 
 
 def init_project():
@@ -13,8 +21,10 @@ def init_project():
 
 
 def generate_tests(auto: bool):
-    print("Generating tests...")
-
+    print("Generating invariants...")
+    # generate_invariants(client, ...)
+    print("Generating initial unit tests...")
+    # unit_tests.generate_initial(client)
 
 def main():
     parser = argparse.ArgumentParser(

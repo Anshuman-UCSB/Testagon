@@ -1,20 +1,13 @@
 import sys
 import os
 import json
-from dotenv import load_dotenv
 from openai import OpenAI
 from textwrap import dedent
 
-load_dotenv()
-
-client = OpenAI(api_key=os.getenv("API_KEY"), base_url=os.getenv("BASE_URL"))
-
-def generate_initial_tests(path):
-  file_path = os.path.realpath(path)
-  dir = os.path.dirname(path)
-
-  filename = os.path.basename(path)
-  test_file_path = f"{dir}/test_{filename}"
+# Assumes each function already has a set of invariants in the docstring
+def generate_initial(client: OpenAI, file_path: str, test_path: str):
+  file_path = os.path.realpath(file_path)
+  test_path = os.path.realpath(test_path)
 
   with open(file_path, "r") as f:
     content = f.read()
@@ -27,38 +20,47 @@ def generate_initial_tests(path):
           "schema": {
             "type": "object",
             "properties": {
+              # Reasoning for each function in the source file
               "functions": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "properties": {
+                    # Declaration line as written in source file
                     "declaration": {"type": "string"},
+                    # List of library/other files in project dependencies
+                    "dependencies": {
+                      "type": "array",
+                      "items": {"type": "string"}
+                    },
+                    # Logical reasoning through function/listed invariants
                     "reasoning": {"type": "string"},
+                    # Cases to test in final result; not expected to be Python code
                     "cases": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
+                          # Explicitly state goal of the test case to reinforce LLM
+                          "justification": {"type": "string"},
+                          # Input value
                           "input": {"type": "string"},
+                          # Natural language for conditions to check on output
                           "output_properties": {
                             "type": "array",
                             "items": {"type": "string"}
                           },
-                          "justification": {"type": "string"},
-                          "dependencies": {
-                            "type": "array",
-                            "items": {"type": "string"}
-                          }
                         },
-                        "required": ["input", "output_properties", "justification", "dependencies"],
+                        "required": ["justification", "input", "output_properties"],
                         "additionalProperties": False
                       }
                     },
                   },
-                  "required": ["declaration", "reasoning", "cases"],
+                  "required": ["declaration", "dependencies", "reasoning", "cases"],
                   "additionalProperties": False
                 }
               },
+              # Final output
               "pytest_file_content": {"type": "string"},
             },
             "required": ["functions", "pytest_file_content"],
@@ -87,6 +89,9 @@ def generate_initial_tests(path):
             ---
             `declaration`: Function declaration, exactly as written in the source file
 
+            `dependencies`: Examine the code of the function, looking at external dependencies and calls to other files in the
+            project. List these external services that the function relies on to execute. These will likely need to be mocked in unit tests.
+
             `reasoning`: Reason about what the function is doing logically. How are the invariants provided supposed to help
             accomplish the goal of this function? Think of this as a scratchpad for working through the functions.
             If helpful, go through the function and invariants line by line. 
@@ -102,9 +107,6 @@ def generate_initial_tests(path):
 
             Attempt to provide enough tests such that every line in the function code receives coverage. Make sure branches and other
             variable constraints are tested thoroughly.
-
-            `dependencies`: Examine the code of the function, looking at external dependencies and library calls. List these 
-            external services that the function relies on to execute. These will likely need to be mocked in unit tests.
             ---
 
             Once you have processed every function in this way, provide a complete Python file using Pytest that will
@@ -115,12 +117,13 @@ def generate_initial_tests(path):
         },
         {
           "role": "user",
+          # TODO: Give LLM information on entire project structure; easier to detect which dependencies are internal/external
           "content": dedent(f"""
             # File path #
             `{file_path}`
 
             # Pytest script location #
-            `{test_file_path}`
+            `{test_path}`
 
             # File content # 
             ```python
@@ -131,9 +134,7 @@ def generate_initial_tests(path):
       ]
     )
 
+    # Dump result for target file to test script
     response = json.loads(completion.choices[0].message.content)
-    with open(test_file_path, "w") as test_file:
+    with open(test_path, "w") as test_file:
       test_file.write(response["pytest_file_content"])
-  
-if __name__ == "__main__":
-  generate_initial_tests(sys.argv[1])

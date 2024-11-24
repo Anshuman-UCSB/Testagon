@@ -1,7 +1,10 @@
 [project]
 name = "testagon"
 version = "0.1.0"
-description = "Add your description here"
+description = "Automated invariant detection and test case generation with LLMs"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "openai",
+    "python-dotenv"
+]
