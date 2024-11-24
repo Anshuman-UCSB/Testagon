@@ -31,8 +31,11 @@ def generate_tests(auto: bool):
 
     # Spawn threads to generate tests for each file concurrently
     for path in util.get_project_structure():
-        # TODO: Get correct test file path and pass to generate_initial
-        thread = threading.Thread(target=unit_tests.generate_initial, args=(client, path, None))
+        if not path.endswith(".py"): continue
+        test_dir = os.path.relpath(os.path.join("tests", os.path.dirname(path)), os.getcwd())
+        os.makedirs(os.path.join("tests", os.path.dirname(path)), exist_ok=True)
+        test_path = os.path.join(test_dir, os.path.basename(path))
+        thread = threading.Thread(target=unit_tests.generate_initial, args=(client, path, test_path))
         thread.start()
         unit_test_threads.append(thread)
 
