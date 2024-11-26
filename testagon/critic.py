@@ -1,8 +1,11 @@
 import os
 import json
 import subprocess
+import logging
 from openai import OpenAI
 from textwrap import dedent
+
+logger = logging.getLogger(__name__)
 
 def run_tests(test_file_path: str):
     """
@@ -17,15 +20,15 @@ def run_tests(test_file_path: str):
         )
         # Check if pytest executed successfully
         if result.returncode == 0:
-            print("All tests passed successfully!")
+            logger.debug("All tests passed successfully!")
             return None, True
         else:
-            print("Some tests failed. See details below:")
+            logger.debug("Some tests failed. See details below:")
             with open("report.json") as report_file:
                 report = json.load(report_file)
             return report, False
     except Exception as e:
-        print(f"Error running tests: {e}")
+        logger.debug(f"Error running tests: {e}")
         return None, False
 
 def analyze_report(report):
@@ -60,20 +63,41 @@ def analyze_report(report):
             })
     return analysis
 
-def feedback_loop(client: OpenAI, analysis):
+def feedback_loop(client: OpenAI, analysis: dict[str, list]):
     """
     Uses the LLM to generate feedback on failed tests and suggest corrections.
     """
     for suggestion in analysis["suggestions"]:
         completion = client.chat.completions.create(
-            model='oai-gpt-4o-mini' if os.getenv("USE_MINI_MODEL", False) else 'oai-gpt-4o-structured',
+            model=os.getenv("MODEL"),
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "suggest_test_fix",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "explanation": {"type": "string"},
+                            "problem_source": {"type": "string", "enum": ["source", "test"]}
+                        },
+                        "required": ["explanation", "problem_source"],
+                        "additionalProperties": False
+                    },
+                    "strict": True
+                }
+            },
             messages=[
                 {
                     "role": "system",
                     "content": dedent("""
-                        You will be provided with details of a failed unit test case.
-                        Your task is to explain why this failure might have occurred and suggest how the test or the 
-                        source code could be adjusted to handle it properly. Make sure any changes do not alter the intended behavior of the program.
+                        You will be provided with details of a failed unit test case, the source code of the unit test file,
+                        the source code of the file being tested, and the project directory structure. From these components,
+                        place your reasoning in `explanation` about what could have gone wrong during the test. It is possible
+                        that the user wrote the unit test incorrectly, but it is also possible that the intended logic of the
+                        source program does not match the code.
+                                      
+                        Given your reasoning, determine whether the source of the failed test is due to an error in the source
+                        code.
                     """)
                 },
                 {
@@ -104,7 +128,7 @@ def critic_process(client: OpenAI, test_file_path: str):
 # Example usage
 if __name__ == "__main__":
     # Initialize OpenAI client with API key
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = OpenAI(api_key=os.getenv("API_KEY"))
     
     # Path to the generated test file by the actor LLM
     test_file_path = "generated_test_file.py"  # Adjust to the correct file location
