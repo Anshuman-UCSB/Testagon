@@ -3,8 +3,11 @@ import json
 import util
 import ast
 import traceback
+import logging
 from openai import OpenAI
 from textwrap import dedent
+
+logger = logging.getLogger(__name__)
 
 def validate_syntax(source: str):
   """
@@ -23,10 +26,11 @@ def iterate_syntax(client: OpenAI, source: str, first_err: str, max_iter=10):
   """
   updated_source = source
   last_err = first_err
+  fixed = False
 
-  for _ in range(0, max_iter):
+  for i in range(0, max_iter):
     completion = client.chat.completions.create(
-      model='oai-gpt-4o-mini' if os.getenv("USE_MINI_MODEL", False) else 'oai-gpt-4o-structured',
+      model=os.getenv("MODEL"),
       response_format={
         "type": "json_schema",
         "json_schema": {
@@ -72,8 +76,14 @@ def iterate_syntax(client: OpenAI, source: str, first_err: str, max_iter=10):
     response = json.loads(completion.choices[0].message.content)
     updated_source = response["updated_file"]
     (valid, err) = validate_syntax(updated_source)
-    if valid: break
+    if valid:
+      fixed = True
+      logger.debug("Syntax correction completed after %i iterations", i + 1)
+      break
     last_err = err
+
+  if not fixed:
+    logger.error("Syntax correction not successful")
 
   return updated_source
 
@@ -86,11 +96,15 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
   each function, attempting to take into account any sources of logical vulnerabilities.
   """
   file_structure = "\n".join(util.get_project_structure())
+  logger.debug("[Source file] %s", file_path)
+  logger.debug("[Test file] %s", test_path)
+  logger.debug("[Project structure]\n%s", file_structure)
 
   with open(file_path, "r") as f:
     content = f.read()
+    logger.debug("[File content]\n%s", content)
     completion = client.chat.completions.create(
-      model='oai-gpt-4o-mini' if os.getenv("USE_MINI_MODEL", False) else 'oai-gpt-4o-structured',
+      model=os.getenv("MODEL"),
       response_format={
         "type": "json_schema",
         "json_schema": {
@@ -217,12 +231,16 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
     )
 
     # Ensure correct syntax of the test file
-    response = json.loads(completion.choices[0].message.content)
+    raw_res = completion.choices[0].message.content
+    logger.debug("[LLM response]\n%s", raw_res)
+    response = json.loads(raw_res)
     pytest_content = response["pytest_file_content"]
     (valid, err) = validate_syntax(pytest_content)
     if not valid:
+      logger.debug("LLM provided test file with invalid syntax, iterating...")
       pytest_content = iterate_syntax(client, pytest_content, err)
 
     # Dump result for target file to test script
     with open(test_path, "w") as test_file:
       test_file.write(pytest_content)
+      logger.debug("[Test script %s for %s]\n%s", test_path, file_path, pytest_content)
