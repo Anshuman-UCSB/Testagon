@@ -44,7 +44,8 @@ def iterate_syntax(client: OpenAI, source: str, first_err: str, max_iter=10):
             },
             "required": ["explanation", "fix", "updated_file"],
             "additionalProperties": False
-          }
+          },
+          "strict": True
         }
       },
       messages=[
