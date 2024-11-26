@@ -103,6 +103,8 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
   with open(file_path, "r") as f:
     content = f.read()
     logger.debug("[File content]\n%s", content)
+    logger.info("(%s) Providing LLM context and prompting for initial test generation...", test_path)
+
     completion = client.chat.completions.create(
       model=os.getenv("MODEL"),
       response_format={
@@ -230,17 +232,25 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
       ]
     )
 
+    logger.info("(%s) Recieved response from LLM", test_path)
+
     # Ensure correct syntax of the test file
     raw_res = completion.choices[0].message.content
     logger.debug("[LLM response]\n%s", raw_res)
     response = json.loads(raw_res)
     pytest_content = response["pytest_file_content"]
+    
+
+    logger.info("(%s) Testing for valid response syntax", test_path)
     (valid, err) = validate_syntax(pytest_content)
     if not valid:
-      logger.debug("LLM provided test file with invalid syntax, iterating...")
+      logger.info("(%s)LLM provided test file with invalid syntax, iterating...", test_path)
       pytest_content = iterate_syntax(client, pytest_content, err)
+    logger.info("(%s) Received valid response syntax, writing to file", test_path)
 
     # Dump result for target file to test script
     with open(test_path, "w") as test_file:
       test_file.write(pytest_content)
       logger.debug("[Test script %s for %s]\n%s", test_path, file_path, pytest_content)
+
+    logger.info("(%s) Completed, returning to main thread.", test_path)
