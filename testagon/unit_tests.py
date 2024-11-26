@@ -3,11 +3,10 @@ import json
 import testagon.util as util
 import ast
 import traceback
-import logging
 from openai import OpenAI
 from textwrap import dedent
 
-logger = logging.getLogger(__name__)
+from testagon.logger import logger
 
 def validate_syntax(source: str):
   """

@@ -1,9 +1,9 @@
 import os
 import json
 import subprocess
-import logging
 from openai import OpenAI
 from textwrap import dedent
+from testagon.logger import logger
 
 logger = logging.getLogger(__name__)
 

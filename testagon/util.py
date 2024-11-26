@@ -1,6 +1,7 @@
 import os
 import typing
 import libcst as cst
+from testagon.logger import logger
 
 def get_project_structure(path: str="."):
     """Lists all files (using their path relative to the project root) recursively in the project directory"""
