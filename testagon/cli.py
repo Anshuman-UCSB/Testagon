@@ -3,9 +3,8 @@ import os
 import threading
 from openai import OpenAI
 from dotenv import load_dotenv
-import unit_tests
-import util
-
+import testagon.unit_tests as unit_tests
+import testagon.util as util
 
 # Initialize OpenAI client
 load_dotenv()
@@ -44,6 +43,10 @@ def generate_tests(auto: bool):
     for thread in unit_test_threads:
         thread.join()
 
+def run_tests():
+    import pytest
+    pytest.main()
+
 def main():
     parser = argparse.ArgumentParser(
         description="A tool to determine logic invariants, and generate tests for them."
@@ -58,6 +61,9 @@ def main():
         "generate", help="Generate tests for the project."
     )
 
+    # Subcommand for 'init'
+    test_parser = subparsers.add_parser("test", help="Run testagon tests.")
+
     generate_parser.add_argument(
         "-a",
         "--auto",
@@ -71,6 +77,8 @@ def main():
         init_project()
     elif args.command == "generate":
         generate_tests(args.auto)
+    elif args.command == "test":
+        run_tests()
     else:
         parser.print_help()
 

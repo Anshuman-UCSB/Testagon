@@ -7,5 +7,14 @@ requires-python = ">=3.10"
 dependencies = [
     "openai",
     "python-dotenv",
-    "libcst"
+    "libcst",
+    "pytest>=8.3.3",
+    "colorama>=0.4.6",
 ]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+testagon = "testagon.cli:main"

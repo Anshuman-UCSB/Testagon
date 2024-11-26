@@ -1,6 +1,6 @@
 import os
 import json
-import util
+import testagon.util as util
 import ast
 import traceback
 import logging
