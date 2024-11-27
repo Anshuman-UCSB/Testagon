@@ -47,79 +47,96 @@ def get_failed_tests(report):
             })
     return failed_tests
 
-def generate_feedback(client: OpenAI, source_path: str, test_code: str, failed_tests: list[dict]):
+def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_tests: list[dict]):
     """
     Uses the LLM to generate feedback on failed tests and suggest corrections.
     """
     file_structure = "\n".join(util.get_project_structure())
 
-    completion = client.chat.completions.create(
-        model=os.getenv("MODEL"),
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "suggest_test_fixes",
-                "schema": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "test_name": {"type": "string"},
-                            "explanation": {"type": "string"},
-                            "problem_source": {"type": "string", "enum": ["source", "test"]},
-                            "suggestion": {"type": "string"}
-                        },
-                        "required": ["test_name", "explanation", "problem_source", "suggestion"],
-                        "additionalProperties": False
-                    }
-                },
-                "strict": True
-            }
-        },
-        messages=[
-            {
-                "role": "system",
-                "content": dedent("""
-                    You will be provided the source code of a Python file, the code of a pytest file performing unit tests
-                    on that file, and the file structure of the Python project the source is part of. After running pytest,
-                    some of the unit tests have failed. The user will provide the name of each unit test followed by the report
-                    detailing how it failed.
-                                    
-                    It is possible that the user wrote the unit test incorrectly, but it is also possible that the intended 
-                    logic of the source program does not match the code. Given your reasoning, determine whether the source 
-                    of the failed test is due to an error in the source code or an error in the unit test itself.
-                                    
-                    If the cause of the problem was the source code, suggest how the source code could be fixed in the future.
-                    If the unit test was the problem, suggest how to fix the unit test.
-                """)
+    with open(source_path, "r") as sf, open(test_path, "r") as tf:
+        source_code = sf.read()
+        test_code = tf.read()
+
+        completion = client.chat.completions.create(
+            model=os.getenv("MODEL"),
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "suggest_test_fixes",
+                    "schema": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                # The name of the test function
+                                "test_name": {"type": "string"},
+                                # Explanation of the problem with the unit test
+                                "explanation": {"type": "string"},
+                                # Whether the problem is attributed to bad source code or a unit test issue
+                                "problem_source": {"type": "string", "enum": ["source", "test"]},
+                                # Suggestion for how to fix the problem
+                                "suggestion": {"type": "string"}
+                            },
+                            "required": ["test_name", "explanation", "problem_source", "suggestion"],
+                            "additionalProperties": False
+                        }
+                    },
+                    "strict": True
+                }
             },
-            {
-                "role": "user",
-                "content": dedent(f"""
-                    # Source file #
-                    ```python
-                    {source_path}
-                    ```
+            messages=[
+                {
+                    "role": "system",
+                    "content": dedent("""
+                        You will be provided the source code of a Python file, the code of a pytest script performing unit tests
+                        on that file, and the file structure of the Python project the source is part of. After running pytest,
+                        some of the unit tests have failed. The user will provide the name of each unit test followed by the report
+                        detailing how it failed.
+                                      
+                        For each failed test, put the test's name in `test_name`, then reason about why the test failed. Was
+                        the function expecting inputs that it did not expect? Were the listed invariants violated? Was some edge
+                        case missed? Consider all of these ideas when providing the `explanation` of what went wrong.
+                                        
+                        It is possible that the source code failed to account for certain issues, but it is also possible that
+                        the unit test itself is flawed. Given your reasoning, determine whether the source 
+                        of the failed test is due to an error in the source code or an error in the unit test itself.
+                                        
+                        If the cause of the problem was the source code, suggest how the source code could be fixed in the future.
+                        If the unit test was the problem, suggest how to fix the unit test.
+                    """)
+                },
+                {
+                    "role": "user",
+                    "content": dedent(f"""
+                        # Source file #
+                        ```python
+                        {source_code}
+                        ```
 
-                    # Unit tests #
-                    ```python
-                    {test_code}
-                    ```
+                        # Unit tests #
+                        ```python
+                        {test_code}
+                        ```
 
-                    # Project directory structure #
-                    `{file_structure}`
+                        # Project directory structure #
+                        `{file_structure}`
 
-                    # Failed tests #
-                    {"\n\n".join(
-                        f"## {t.get("test_name")} ##\n```\n{t.get("failure_message")}\n```" 
-                        for t in failed_tests
-                    )}
-                """)
-            }
-        ]
-    )
-        
-    response = json.loads(completion.choices[0].message.content)
+                        # Failed tests #
+                        {"\n\n".join(
+                            f"## Test: {t.get("test_name")} ##\n```\n{t.get("failure_message")}\n```" 
+                            for t in failed_tests
+                        )}
+                    """)
+                }
+            ]
+        )
+            
+        raw_res = completion.choices[0].message.content
+        logger.debug("[LLM response]\n%s", raw_res)
+        response = json.loads(raw_res)
+        return response
+
+def integrate_feedback(client: OpenAI):
     tests_to_fix = list(filter(lambda x: x.get("problem_source") == "test", response))
     if len(tests_to_fix) == 0:
         return

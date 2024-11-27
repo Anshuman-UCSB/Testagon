@@ -1,92 +1,10 @@
 import os
 import json
 import testagon.util as util
-import ast
-import traceback
 from openai import OpenAI
 from textwrap import dedent
 
 from testagon.logger import logger
-
-def validate_syntax(source: str):
-  """
-  Validates the syntax of a Python program from `source`
-  """
-  try:
-    ast.parse(source)
-    return True, None
-  except SyntaxError:
-    return False, traceback.format_exc()
-  
-
-def iterate_syntax(client: OpenAI, source: str, first_err: str, max_iter=10):
-  """
-  Verify `source` has correct syntax; iterates with the LLM until the syntax is valid or `max_iter` is reached
-  """
-  updated_source = source
-  last_err = first_err
-  fixed = False
-
-  for i in range(0, max_iter):
-    completion = client.chat.completions.create(
-      model=os.getenv("MODEL"),
-      response_format={
-        "type": "json_schema",
-        "json_schema": {
-          "name": "validate_syntax",
-          "schema": {
-            "type": "object",
-            "properties": {
-              "explanation": {"type": "string"},
-              "fix": {"type": "string"},
-              "updated_file": {"type": "string"}
-            },
-            "required": ["explanation", "fix", "updated_file"],
-            "additionalProperties": False
-          },
-          "strict": True
-        }
-      },
-      messages=[
-        {
-          "role": "system",
-          "content": dedent("""
-            The user will provide a Python file that is syntactically incorrect. They will also
-            provide a traceback of the syntax error, informing you where it is. `explanation` is
-            where you should describe the syntax error, `fix` is where you should describe how
-            to fix it, and `updated_file` is the entire file content with the syntax error fixed. 
-            Do not change the behavior of the program except to fix the syntax error.
-          """)
-        },
-        {
-          "role": "user",
-          "content": dedent(f"""
-            # File #
-            ```python
-            {updated_source}
-            ```
-
-            # Error information #
-            `{last_err}`
-          """)
-        }
-      ]
-    )
-
-    response = json.loads(completion.choices[0].message.content)
-    updated_source = response["updated_file"]
-    (valid, err) = validate_syntax(updated_source)
-    if valid:
-      fixed = True
-      logger.debug("Syntax correction completed after %i iterations", i + 1)
-      break
-    last_err = err
-
-  if not fixed:
-    logger.error("Syntax correction not successful")
-
-  return updated_source
-
 
 
 def generate_initial(client: OpenAI, file_path: str, test_path: str):
@@ -212,10 +130,8 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
         {
           "role": "user",
           "content": dedent(f"""
-            # Project structure #
-            ```
-            {file_structure}
-            ```         
+            # Project directory structure #
+            `{file_structure}`         
             
             # File path #
             `{file_path}`
@@ -234,18 +150,15 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
 
     logger.info("(%s) Recieved response from LLM", test_path)
 
-    # Ensure correct syntax of the test file
+    # Parse LLM response
     raw_res = completion.choices[0].message.content
     logger.debug("[LLM response]\n%s", raw_res)
     response = json.loads(raw_res)
     pytest_content = response["pytest_file_content"]
     
-
+    # Ensure correct syntax of the test file
     logger.info("(%s) Testing for valid response syntax", test_path)
-    (valid, err) = validate_syntax(pytest_content)
-    if not valid:
-      logger.info("(%s)LLM provided test file with invalid syntax, iterating...", test_path)
-      pytest_content = iterate_syntax(client, pytest_content, err)
+    pytest_content = util.validate_syntax(pytest_content)
     logger.info("(%s) Received valid response syntax, writing to file", test_path)
 
     # Dump result for target file to test script
