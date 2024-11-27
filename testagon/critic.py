@@ -3,9 +3,8 @@ import json
 import subprocess
 from openai import OpenAI
 from textwrap import dedent
+import testagon.util as util
 from testagon.logger import logger
-
-logger = logging.getLogger(__name__)
 
 def run_tests(test_file_path: str):
     """
@@ -28,91 +27,104 @@ def run_tests(test_file_path: str):
                 report = json.load(report_file)
             return report, False
     except Exception as e:
-        logger.debug(f"Error running tests: {e}")
+        logger.error(f"Error running tests: {e}")
         return None, False
 
-def analyze_report(report):
+def get_failed_tests(report):
     """
     Analyze the pytest report to understand failures and unexpected behavior.
     """
-    analysis = {
-        "failed_tests": [],
-        "suggestions": []
-    }
+    failed_tests = []
     for test in report.get("tests", []):
         if test["outcome"] == "failed":
             test_name = test["nodeid"]
             failure_message = test.get("call", {}).get("longrepr", "No failure details")
             
             # Store failure information
-            analysis["failed_tests"].append({
+            failed_tests.append({
                 "test_name": test_name,
                 "failure_message": failure_message
             })
-            
-            # Create feedback for the LLM to generate better tests
-            analysis["suggestions"].append({
-                "test_name": test_name,
-                "suggestion": dedent(f"""
-                    The test `{test_name}` failed. Here is the failure message:
-                    {failure_message}
-                    
-                    Please provide an explanation of why this failure might occur and suggest improved invariants or test conditions.
-                    Consider if there are any logic flaws in the source code that could cause this failure.
-                """)
-            })
-    return analysis
+    return failed_tests
 
-def feedback_loop(client: OpenAI, analysis: dict[str, list]):
+def generate_feedback(client: OpenAI, source_path: str, test_code: str, failed_tests: list[dict]):
     """
     Uses the LLM to generate feedback on failed tests and suggest corrections.
     """
-    for suggestion in analysis["suggestions"]:
-        completion = client.chat.completions.create(
-            model=os.getenv("MODEL"),
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "suggest_test_fix",
-                    "schema": {
+    file_structure = "\n".join(util.get_project_structure())
+
+    completion = client.chat.completions.create(
+        model=os.getenv("MODEL"),
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "suggest_test_fixes",
+                "schema": {
+                    "type": "array",
+                    "items": {
                         "type": "object",
                         "properties": {
+                            "test_name": {"type": "string"},
                             "explanation": {"type": "string"},
-                            "problem_source": {"type": "string", "enum": ["source", "test"]}
+                            "problem_source": {"type": "string", "enum": ["source", "test"]},
+                            "suggestion": {"type": "string"}
                         },
-                        "required": ["explanation", "problem_source"],
+                        "required": ["test_name", "explanation", "problem_source", "suggestion"],
                         "additionalProperties": False
-                    },
-                    "strict": True
-                }
-            },
-            messages=[
-                {
-                    "role": "system",
-                    "content": dedent("""
-                        You will be provided with details of a failed unit test case, the source code of the unit test file,
-                        the source code of the file being tested, and the project directory structure. From these components,
-                        place your reasoning in `explanation` about what could have gone wrong during the test. It is possible
-                        that the user wrote the unit test incorrectly, but it is also possible that the intended logic of the
-                        source program does not match the code.
-                                      
-                        Given your reasoning, determine whether the source of the failed test is due to an error in the source
-                        code.
-                    """)
+                    }
                 },
-                {
-                    "role": "user",
-                    "content": suggestion["suggestion"]
-                }
-            ]
-        )
+                "strict": True
+            }
+        },
+        messages=[
+            {
+                "role": "system",
+                "content": dedent("""
+                    You will be provided the source code of a Python file, the code of a pytest file performing unit tests
+                    on that file, and the file structure of the Python project the source is part of. After running pytest,
+                    some of the unit tests have failed. The user will provide the name of each unit test followed by the report
+                    detailing how it failed.
+                                    
+                    It is possible that the user wrote the unit test incorrectly, but it is also possible that the intended 
+                    logic of the source program does not match the code. Given your reasoning, determine whether the source 
+                    of the failed test is due to an error in the source code or an error in the unit test itself.
+                                    
+                    If the cause of the problem was the source code, suggest how the source code could be fixed in the future.
+                    If the unit test was the problem, suggest how to fix the unit test.
+                """)
+            },
+            {
+                "role": "user",
+                "content": dedent(f"""
+                    # Source file #
+                    ```python
+                    {source_path}
+                    ```
+
+                    # Unit tests #
+                    ```python
+                    {test_code}
+                    ```
+
+                    # Project directory structure #
+                    `{file_structure}`
+
+                    # Failed tests #
+                    {"\n\n".join(
+                        f"## {t.get("test_name")} ##\n```\n{t.get("failure_message")}\n```" 
+                        for t in failed_tests
+                    )}
+                """)
+            }
+        ]
+    )
         
-        response = json.loads(completion.choices[0].message.content)
-        print(f"Feedback for {suggestion['test_name']}: {response.get('explanation')}")
-        print(f"Suggested Fix: {response.get('fix')}")
-        
-        # Optionally, apply fixes directly to the test file or code (actor correction step)
-        # ...
+    response = json.loads(completion.choices[0].message.content)
+    tests_to_fix = list(filter(lambda x: x.get("problem_source") == "test", response))
+    if len(tests_to_fix) == 0:
+        return
+    
+    # TODO: Pass feedback to actor
 
 def critic_process(client: OpenAI, test_file_path: str):
     """
@@ -120,18 +132,9 @@ def critic_process(client: OpenAI, test_file_path: str):
     """
     report, success = run_tests(test_file_path)
     if not success and report:
-        analysis = analyze_report(report)
-        feedback_loop(client, analysis)
+        analysis = get_failed_tests(report)
+        generate_feedback(client, analysis)
+    elif report is None:
+        logger.error("Tests were unable to execute!")
     else:
-        print("All tests passed, no feedback needed!")
-
-# Example usage
-if __name__ == "__main__":
-    # Initialize OpenAI client with API key
-    client = OpenAI(api_key=os.getenv("API_KEY"))
-    
-    # Path to the generated test file by the actor LLM
-    test_file_path = "generated_test_file.py"  # Adjust to the correct file location
-    
-    # Run the critic process
-    critic_process(client, test_file_path)
+        logger.info("All tests passed, no feedback needed!")
