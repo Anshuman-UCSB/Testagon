@@ -30,6 +30,7 @@ def run_tests(test_file_path: str):
         logger.error(f"Error running tests: {e}")
         return None, False
 
+
 def get_failed_tests(report):
     """
     Analyze the pytest report to understand failures and unexpected behavior.
@@ -46,6 +47,7 @@ def get_failed_tests(report):
                 "failure_message": failure_message
             })
     return failed_tests
+
 
 def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_tests: list[dict]):
     """
@@ -98,11 +100,14 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
                         case missed? Consider all of these ideas when providing the `explanation` of what went wrong.
                                         
                         It is possible that the source code failed to account for certain issues, but it is also possible that
-                        the unit test itself is flawed. Given your reasoning, determine whether the source 
+                        the unit test itself is flawed. Given your reasoning, determine whether the `problem_source`
                         of the failed test is due to an error in the source code or an error in the unit test itself.
                                         
                         If the cause of the problem was the source code, suggest how the source code could be fixed in the future.
-                        If the unit test was the problem, suggest how to fix the unit test.
+                        If the unit test was the problem, suggest how to fix the unit test. This is placed in `suggestion` as
+                        natural language.
+                        
+                        Your output should be a JSON object.
                     """)
                 },
                 {
@@ -136,22 +141,107 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
         response = json.loads(raw_res)
         return response
 
-def integrate_feedback(client: OpenAI):
-    tests_to_fix = list(filter(lambda x: x.get("problem_source") == "test", response))
-    if len(tests_to_fix) == 0:
-        return
-    
-    # TODO: Pass feedback to actor
 
-def critic_process(client: OpenAI, test_file_path: str):
+def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_feedback: list[dict]):
+    tests_to_fix = list(filter(lambda x: x.get("problem_source") == "test", critic_feedback))
+    if len(tests_to_fix) == 0:
+        logger.info("(%s) All unit tests are correct", test_path)
+        return True
+    
+    logger.info("(%s) %i test(s) are fixable", test_path, len(tests_to_fix))
+    
+    with open(source_path, "r") as sf, open(test_path, "r") as tf:
+        source_code = sf.read()
+        test_code = tf.read()
+
+        completion = client.chat.completions.create(
+            model=os.getenv("MODEL"),
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "validate_syntax",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            # All output that is not part of the resulting file
+                            "scratchpad": {"type": "string"},
+                            # The unit test with the fix implemented
+                            "updated_file": {"type": "string"}
+                        },
+                        "required": ["scratchpad", "updated_file"],
+                        "additionalProperties": False
+                    },
+                    "strict": True
+                }
+            },
+            messages=[
+                {
+                    "role": "system",
+                    "content": dedent("""
+                        You are a programmer writing unit tests for a Python module. You have sent your source code
+                        and unit testing to be reviewed by another person, who has run the unit tests and noticed that
+                        some tests have failed.
+                                      
+                        This person will provide the source file and the test code for reference, then go through each
+                        erroneous test function and suggest fixes. Your job is to update the test file with these changes.
+                                      
+                        Your response should be output in JSON, with `updated_file` containing only the full updated test script.
+                    """)
+                },
+                {
+                    "role": "user",
+                    "content": dedent(f"""
+                        It looks like some of the tests have failed. For reference, here is your source code:
+                        ```python
+                        {source_code}
+                        ```
+
+                        And here is the Pytest test code you submitted to me:
+                        ```python
+                        {test_code}
+                        ```
+
+                        Here are the tests that failed, and my suggested fixes:
+                        {"\n\n".join(
+                            f"# {t.get("test_name")} #\n## Explanation ##\n{t.get("explanation")}\n\n ## Suggested Fix ##\n{t.get("suggestion")}"
+                            for t in tests_to_fix
+                        )}
+                    """)
+                }
+            ]
+        )
+        
+        # Parse LLM response
+        raw_res = completion.choices[0].message.content
+        logger.debug("[LLM response]\n%s", raw_res)
+        response = json.loads(raw_res)
+        new_file = response["updated_file"]
+    
+        # Ensure correct syntax of the test file
+        logger.info("(%s) Testing for valid response syntax", test_path)
+        new_file = util.validate_syntax(new_file)
+        logger.info("(%s) Received valid response syntax, writing to file", test_path)
+
+        # Dump result for target file to test script
+        with open(test_path, "w") as test_file:
+            test_file.write(new_file)
+
+    return False
+
+
+def critic_process(client: OpenAI, source_path: str, test_path: str, max_iter=10):
     """
     Executes the entire critic process: running tests, analyzing failures, and providing feedback.
     """
-    report, success = run_tests(test_file_path)
-    if not success and report:
-        analysis = get_failed_tests(report)
-        generate_feedback(client, analysis)
-    elif report is None:
-        logger.error("Tests were unable to execute!")
-    else:
-        logger.info("All tests passed, no feedback needed!")
+    for i in range(0, max_iter):
+        report, success = run_tests(test_path)
+        if not success and report:
+            analysis = get_failed_tests(report)
+            feedback = generate_feedback(client, source_path, test_path, analysis)
+            finished = integrate_feedback(client, source_path, test_path, feedback)
+            if finished: break
+        elif report is None:
+            logger.error("Tests were unable to execute!")
+            return
+
+    logger.info("(%s) Unit test iteration completed", test_path)

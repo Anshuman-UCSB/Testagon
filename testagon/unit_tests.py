@@ -123,8 +123,9 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
 
             Once you have processed every function in this way, provide a complete Python file using Pytest that will
             format the test cases for each function as a proper test case, running with the inputs and comparing them
-            to the expected outputs. Make sure any services used in the functions are properly mocked. 
-            This output goes in `pytest_file_content`. Output the entire answer as a JSON object.
+            to the expected outputs. Make sure to provide plenty of comments explaining what behavior you are testing. 
+            Also make sure any services used in the functions are properly mocked. This output goes in `pytest_file_content`. 
+            Output the entire answer as a JSON object.
           """)
         },
         {
