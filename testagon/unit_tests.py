@@ -159,7 +159,7 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str):
     
     # Ensure correct syntax of the test file
     logger.info("(%s) Testing for valid response syntax", test_path)
-    pytest_content = util.validate_syntax(pytest_content)
+    pytest_content = util.validate_syntax(client, pytest_content)
     logger.info("(%s) Received valid response syntax, writing to file", test_path)
 
     # Dump result for target file to test script

@@ -219,7 +219,7 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
     
         # Ensure correct syntax of the test file
         logger.info("(%s) Testing for valid response syntax", test_path)
-        new_file = util.validate_syntax(new_file)
+        new_file = util.validate_syntax(client, new_file)
         logger.info("(%s) Received valid response syntax, writing to file", test_path)
 
         # Dump result for target file to test script

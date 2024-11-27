@@ -33,7 +33,7 @@ def is_valid_syntax(source: str):
         return False, traceback.format_exc()
   
 
-def validate_syntax(client: OpenAI, source: str, first_err: str, max_iter=10):
+def validate_syntax(client: OpenAI, source: str, max_iter=10):
     """
     Verify `source` has correct syntax; iterates with the LLM until the syntax is valid or `max_iter` is reached
 
