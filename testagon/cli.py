@@ -56,8 +56,8 @@ def generate_tests(auto: bool):
 	logger.info("Complete!")
 
 def run_tests():
-	import pytest
-	pytest.main()
+	import subprocess
+	subprocess.run("python3 -m pytest tests/testagon".split())
 
 def main():
 	parser = argparse.ArgumentParser(
