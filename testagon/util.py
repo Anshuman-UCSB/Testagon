@@ -6,7 +6,7 @@ import json
 import libcst as cst
 from openai import OpenAI
 from textwrap import dedent
-from testagon.logger import logger
+from logger import logger
 
 def get_project_structure(path: str="."):
     """Lists all files (using their path relative to the project root) recursively in the project directory"""
@@ -119,7 +119,23 @@ class DocstringEditor(cst.CSTTransformer):
         self.updater = updater
 
     def leave_FunctionDef(self, original_node, updated_node):
-        if original_node.name.value == self.function_name:
+        # Temp CST FunctionDef node for function_name
+        temp = cst.parse_module(self.function_name + "\n    pass").body[0]
+
+        # Comparator for two CST FunctionDef nodes
+        def is_same_func(original_node, temp):
+            if original_node.name.value != temp.name.value:
+                return False
+            if len(original_node.params.params) != len(temp.params.params):
+                return False
+            for i in range(len(original_node.params.params)):
+                arg1 = original_node.params.params[i].name.value
+                arg2 = temp.params.params[i].name.value
+                if arg1 != arg2:
+                    return False;
+            return True
+            
+        if is_same_func(original_node, temp):
             if original_node.get_docstring():
                 # Update the docstring
                 new_docstring = self.updater(original_node.get_docstring())
@@ -144,4 +160,4 @@ def update_docstring(source: str, function_name: str, updater: typing.Callable[[
     tree = cst.parse_module(source)
     transformer = DocstringEditor(function_name, updater)
     new_tree = tree.visit(transformer)
-    return new_tree.code()
+    return new_tree.code
