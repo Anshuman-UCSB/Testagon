@@ -15,7 +15,7 @@ def generate_invariants(client: OpenAI, file_path: str):
         
         # Call the LLM to analyze the file and generate invariants
         completion = client.chat.completions.create(
-            model="oai-gpt-4o-structured",
+            model=os.getenv("MODEL"),
             response_format={
                 "type": "json_schema",
                 "json_schema": {
@@ -193,15 +193,10 @@ def generate_invariants(client: OpenAI, file_path: str):
         for func in response['functions']:
             name = func['declaration']
             invariants = func['invariants']
-            print(func['formatted_output'])
+            formatted_invariants = func['formatted_output']
 
             def updater(existing_docstring: str):
-                if "-- INVARIANTS --" in existing_docstring:
-                    # Replace existing invariants
-                    return existing_docstring.split("-- INVARIANTS --")[0].strip() + "\n\n" + formatted_invariants
-                else:
-                    # Add invariants to the end of the existing docstring
-                    return existing_docstring.strip() + "\n\n" + formatted_invariants
+                return formatted_invariants
 
             # Update the docstring in the source content
             content = update_docstring(content, name, updater)
@@ -209,5 +204,3 @@ def generate_invariants(client: OpenAI, file_path: str):
         # Write the updated content back to the target file
         with open(file_path, "w") as file:
             file.write(content)
-
-        print("Invariants successfully inserted into docstrings.")

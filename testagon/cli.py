@@ -27,7 +27,7 @@ def generate_tests(auto: bool):
 	TESTDIR_STRUCTURE = "tests/testagon"
 
 	logger.info("Generating invariants...")
-	# generate_invariants(client, ...)
+	#generate_invariants(client, ...)
 
 	logger.info("Generating initial unit tests...")
 	unit_test_threads: list[threading.Thread] = []
