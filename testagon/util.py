@@ -98,7 +98,7 @@ def validate_syntax(client: OpenAI, source: str, max_iter=10):
 
         response = json.loads(completion.choices[0].message.content)
         updated_source = response["updated_file"]
-        (valid, err) = validate_syntax(updated_source)
+        (valid, err) = is_valid_syntax(updated_source)
         last_err = err
 
         if valid:
