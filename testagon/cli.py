@@ -5,6 +5,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import testagon.unit_tests as unit_tests
 import testagon.util as util
+import testagon.critic as critic
 import logging
 from testagon.logger import logger, configure_logger
 
@@ -23,22 +24,17 @@ def init_project():
 		return
 
 
-def generate_tests(auto: bool):
+def generate_tests(auto: bool, syntax_iterations: int, critic_iterations: int):
 	TESTDIR_STRUCTURE = "tests/testagon"
 
 	logger.info("Generating invariants...")
 	#generate_invariants(client, ...)
 
+	# Spawn threads to generate tests for each file concurrently
 	logger.info("Generating initial unit tests...")
 	unit_test_threads: list[threading.Thread] = []
-
-	# Spawn threads to generate tests for each file concurrently
-	logger.info("Scanning files...")
-	for path in util.get_project_structure():
-		if path.startswith("./tests/"): continue
-		if not path.endswith(".py"): continue
-		if path.startswith("test"): continue # Skip test files
-		logger.info("Found file %s",path)
+	for path in util.get_source_programs():
+		logger.info("Generating tests for file %s",path)
 
 		# Find and create file path in tests/testagon
 		test_dir = os.path.relpath(os.path.join(TESTDIR_STRUCTURE, os.path.dirname(path)), os.getcwd())
@@ -50,10 +46,27 @@ def generate_tests(auto: bool):
 		unit_test_threads.append(thread)
 
 	logger.info("Waiting for all threads to finish...")
-	# Wait for all generation to finish
 	for thread in unit_test_threads:
 		thread.join()
 	logger.info("Complete!")
+
+	# Spawn threads to iterate on each test file concurrently
+	logger.info("Running critic feedback loop on test files...")
+	critic_threads: list[threading.Thread] = []
+	for path in util.get_source_programs():
+		test_dir = os.path.relpath(os.path.join(TESTDIR_STRUCTURE, os.path.dirname(path)), os.getcwd())
+		test_path = os.path.join(test_dir, "test_"+os.path.basename(path))
+
+		logger.info("Evaluating test file %s", test_path)
+		thread = threading.Thread(target=critic.critic_process, args=(client, path, test_path, critic_iterations))
+		thread.start()
+		critic_threads.append(thread)
+	
+	logger.info("Waiting for all threads to finish...")
+	for thread in critic_threads:
+		thread.join()
+	logger.info("Complete!")
+
 
 def run_tests():
 	import subprocess
@@ -90,6 +103,22 @@ def main():
 		help="Automatically run E2E without human interaction.",
 	)
 
+	generate_parser.add_argument(
+		"-s",
+		"--syntax-iterations",
+		type=int,
+		default=10,
+		help="The maximum number of times the LLM should iterate to correct syntax errors.",
+	)
+
+	generate_parser.add_argument(
+		"-c",
+		"--critic-iterations",
+		type=int,
+		default=10,
+		help="The maximum number of times to iterate the actor-critic feedback loop on each unit test file.",
+	)
+
 	# Subcommand for 'init'
 	test_parser = subparsers.add_parser("test", help="Run testagon tests.")
 
@@ -99,7 +128,7 @@ def main():
 	if args.command == "init":
 		init_project()
 	elif args.command == "generate":
-		generate_tests(args.auto)
+		generate_tests(args.auto, args.syntax_iterations, args.critic_iterations)
 	elif args.command == "test":
 		run_tests()
 	else:

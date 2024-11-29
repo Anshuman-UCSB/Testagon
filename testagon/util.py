@@ -6,7 +6,7 @@ import json
 import libcst as cst
 from openai import OpenAI
 from textwrap import dedent
-from logger import logger
+from testagon.logger import logger
 
 def get_project_structure(path: str="."):
     """Lists all files (using their path relative to the project root) recursively in the project directory"""
@@ -20,6 +20,18 @@ def get_project_structure(path: str="."):
         elif os.path.isdir(new_path):
             files += get_project_structure(new_path)
     return files
+
+
+def get_source_programs():
+    """Filters all files in the project directory and returns only those that are non-test Python files"""
+    files = get_project_structure()
+    python_files = []
+    for path in files:
+        if path.startswith("./tests/"): continue
+        if not path.endswith(".py"): continue
+        if path.startswith("test"): continue
+        python_files.append(path)
+    return python_files
 
 
 def is_valid_syntax(source: str):
