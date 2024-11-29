@@ -142,7 +142,7 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
         return response
 
 
-def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_feedback: list[dict]):
+def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_feedback: list[dict], syntax_iterations: int):
     tests_to_fix = list(filter(lambda x: x.get("problem_source") == "test", critic_feedback))
     if len(tests_to_fix) == 0:
         logger.info("(%s) All unit tests are correct", test_path)
@@ -159,7 +159,7 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
             response_format={
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "validate_syntax",
+                    "name": "test_feedback",
                     "schema": {
                         "type": "object",
                         "properties": {
@@ -219,7 +219,7 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
     
         # Ensure correct syntax of the test file
         logger.info("(%s) Testing for valid response syntax", test_path)
-        new_file = util.validate_syntax(client, new_file)
+        new_file = util.validate_syntax(client, new_file, syntax_iterations)
         logger.info("(%s) Received valid response syntax, writing to file", test_path)
 
         # Dump result for target file to test script
@@ -229,7 +229,7 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
     return False
 
 
-def critic_process(client: OpenAI, source_path: str, test_path: str, max_iter=10):
+def critic_process(client: OpenAI, source_path: str, test_path: str, max_iter=10, syntax_iterations=10):
     """
     Executes the entire critic process: running tests, analyzing failures, and providing feedback.
     """
@@ -238,7 +238,7 @@ def critic_process(client: OpenAI, source_path: str, test_path: str, max_iter=10
         if not success and report:
             analysis = get_failed_tests(report)
             feedback = generate_feedback(client, source_path, test_path, analysis)
-            finished = integrate_feedback(client, source_path, test_path, feedback)
+            finished = integrate_feedback(client, source_path, test_path, feedback, syntax_iterations)
             if finished: break
         elif report is None:
             logger.error("Tests were unable to execute!")

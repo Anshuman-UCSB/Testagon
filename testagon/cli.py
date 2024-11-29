@@ -7,6 +7,7 @@ import testagon.unit_tests as unit_tests
 import testagon.util as util
 import testagon.critic as critic
 import logging
+from testagon.generate_invariants import generate_invariants
 from testagon.logger import logger, configure_logger
 
 # Initialize OpenAI client
@@ -27,21 +28,32 @@ def init_project():
 def generate_tests(auto: bool, syntax_iterations: int, critic_iterations: int):
 	TESTDIR_STRUCTURE = "tests/testagon"
 
+	# Spawn threads to generate invariants for each Python source file
 	logger.info("Generating invariants...")
-	#generate_invariants(client, ...)
+	invariant_threads: list[threading.Thread] = []
+	for path in util.get_source_programs():
+		logger.info("Generating invariants for file %s", path)
+		thread = threading.Thread(target=generate_invariants, args=(client, path))
+		thread.start()
+		invariant_threads.append(thread)
 
+	logger.info("Waiting for all threads to finish...")
+	for thread in invariant_threads:
+		thread.join()
+	logger.info("Complete!")
+	
 	# Spawn threads to generate tests for each file concurrently
 	logger.info("Generating initial unit tests...")
 	unit_test_threads: list[threading.Thread] = []
 	for path in util.get_source_programs():
-		logger.info("Generating tests for file %s",path)
+		logger.info("Generating tests for file %s", path)
 
 		# Find and create file path in tests/testagon
 		test_dir = os.path.relpath(os.path.join(TESTDIR_STRUCTURE, os.path.dirname(path)), os.getcwd())
 		os.makedirs(os.path.join(TESTDIR_STRUCTURE, os.path.dirname(path)), exist_ok=True)
 
 		test_path = os.path.join(test_dir, "test_"+os.path.basename(path))
-		thread = threading.Thread(target=unit_tests.generate_initial, args=(client, path, test_path))
+		thread = threading.Thread(target=unit_tests.generate_initial, args=(client, path, test_path, syntax_iterations))
 		thread.start()
 		unit_test_threads.append(thread)
 
@@ -58,7 +70,7 @@ def generate_tests(auto: bool, syntax_iterations: int, critic_iterations: int):
 		test_path = os.path.join(test_dir, "test_"+os.path.basename(path))
 
 		logger.info("Evaluating test file %s", test_path)
-		thread = threading.Thread(target=critic.critic_process, args=(client, path, test_path, critic_iterations))
+		thread = threading.Thread(target=critic.critic_process, args=(client, path, test_path, critic_iterations, syntax_iterations))
 		thread.start()
 		critic_threads.append(thread)
 	
