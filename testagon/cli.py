@@ -11,6 +11,7 @@ from testagon.generate_invariants import generate_invariants
 from testagon.logger import logger, configure_logger
 
 # Initialize OpenAI client
+# TODO: Doesn't get the right key when using the CLI from a pip package
 load_dotenv()
 client = OpenAI(api_key=os.getenv("API_KEY"), base_url=os.getenv("BASE_URL"))
 

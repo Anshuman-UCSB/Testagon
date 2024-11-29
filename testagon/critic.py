@@ -59,6 +59,16 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
         source_code = sf.read()
         test_code = tf.read()
 
+        test_summary = "\n\n".join(
+            "\n".join([
+                f"## Test: {t.get('test_name')} ##",
+                "```",
+                t.get("failure_message"),
+                "```"
+            ])
+            for t in failed_tests
+        )
+
         completion = client.chat.completions.create(
             model=os.getenv("MODEL"),
             response_format={
@@ -127,10 +137,7 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
                         `{file_structure}`
 
                         # Failed tests #
-                        {"\n\n".join(
-                            f"## Test: {t.get("test_name")} ##\n```\n{t.get("failure_message")}\n```" 
-                            for t in failed_tests
-                        )}
+                        {test_summary}
                     """)
                 }
             ]
@@ -153,6 +160,17 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
     with open(source_path, "r") as sf, open(test_path, "r") as tf:
         source_code = sf.read()
         test_code = tf.read()
+
+        suggested_fixes = "\n\n".join(
+            "\n".join(
+                f"# {t.get('test_name')} #"
+                "## Explanation ##",
+                t.get("explanation"),
+                "## Suggested Fix ##",
+                t.get("suggestion")
+            )
+            for t in tests_to_fix
+        )
 
         completion = client.chat.completions.create(
             model=os.getenv("MODEL"),
@@ -202,10 +220,7 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
                         ```
 
                         Here are the tests that failed, and my suggested fixes:
-                        {"\n\n".join(
-                            f"# {t.get("test_name")} #\n## Explanation ##\n{t.get("explanation")}\n\n ## Suggested Fix ##\n{t.get("suggestion")}"
-                            for t in tests_to_fix
-                        )}
+                        {suggested_fixes}
                     """)
                 }
             ]

@@ -2,7 +2,7 @@ import os
 import json
 from openai import OpenAI
 from textwrap import dedent
-from util import update_docstring
+from testagon.util import update_docstring
 
 def generate_invariants(client: OpenAI, file_path: str):
     """
