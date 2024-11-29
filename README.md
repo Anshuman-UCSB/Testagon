@@ -49,5 +49,5 @@ Nong, Yu, Haoran Yang, Long Cheng, Hongxin Hu, and Haipeng Cai. "Automated Softw
 Lemieux, Caroline, Jeevana Priya Inala, Shuvendu K. Lahiri, and Siddhartha Sen. "Codamosa: Escaping coverage plateaus in test generation with pre-trained large language models." In 2023 IEEE/ACM 45th International Conference on Software Engineering (ICSE), pp. 919-931. IEEE, 2023. https://www.carolemieux.com/codamosa_icse23.pdf
 
 # Misc
-- model used: GPT-4o
+- Model used: GPT-4o with structured JSON output support
 - Team members: Amey Walimbe, Anshuman Dash, Carson Kopper, Tim Kim
