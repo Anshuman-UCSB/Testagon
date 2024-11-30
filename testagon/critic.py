@@ -7,6 +7,7 @@ from textwrap import dedent
 import testagon.util as util
 from testagon.logger import logger
 
+
 def run_tests(test_file_path: str):
     """
     Runs the pytest tests located at `test_file_path` and captures the results.
@@ -14,10 +15,16 @@ def run_tests(test_file_path: str):
     try:
         # Execute pytest and capture output
         (f, report_path) = tempfile.mkstemp()
+        logger.debug("Creating temporary file for pytest report at %s", report_path)
         result = subprocess.run(
-            ["pytest", test_file_path, "--json-report", f"--json-report-file={report_path}"],
+            [
+                "pytest",
+                test_file_path,
+                "--json-report",
+                f"--json-report-file={report_path}",
+            ],
             capture_output=True,
-            text=True
+            text=True,
         )
         # Check if pytest executed successfully
         if result.returncode == 0:
@@ -26,7 +33,7 @@ def run_tests(test_file_path: str):
             return None, True
         else:
             logger.debug("Some tests failed. See details below:")
-            with open("report.json") as f:
+            with open(report_path) as f:
                 report = json.load(f)
             os.remove(report_path)
             return report, False
@@ -45,16 +52,17 @@ def get_failed_tests(report):
         if test["outcome"] == "failed":
             test_name = test["nodeid"]
             failure_message = test.get("call", {}).get("longrepr", "No failure details")
-            
+
             # Store failure information
-            failed_tests.append({
-                "test_name": test_name,
-                "failure_message": failure_message
-            })
+            failed_tests.append(
+                {"test_name": test_name, "failure_message": failure_message}
+            )
     return failed_tests
 
 
-def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_tests: list[dict]):
+def generate_feedback(
+    client: OpenAI, source_path: str, test_path: str, failed_tests: list[dict]
+):
     """
     Uses the LLM to generate feedback on failed tests and suggest corrections.
     """
@@ -65,12 +73,14 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
         test_code = tf.read()
 
         test_summary = "\n\n".join(
-            "\n".join([
-                f"## Test: {t.get('test_name')} ##",
-                "```",
-                t.get("failure_message"),
-                "```"
-            ])
+            "\n".join(
+                [
+                    f"## Test: {t.get('test_name')} ##",
+                    "```",
+                    t.get("failure_message"),
+                    "```",
+                ]
+            )
             for t in failed_tests
         )
 
@@ -93,25 +103,34 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
                                         # Explanation of the problem with the unit test
                                         "explanation": {"type": "string"},
                                         # Whether the problem is attributed to bad source code or a unit test issue
-                                        "problem_source": {"type": "string", "enum": ["source", "test"]},
+                                        "problem_source": {
+                                            "type": "string",
+                                            "enum": ["source", "test"],
+                                        },
                                         # Suggestion for how to fix the problem
-                                        "suggestion": {"type": "string"}
+                                        "suggestion": {"type": "string"},
                                     },
-                                    "required": ["test_name", "explanation", "problem_source", "suggestion"],
-                                    "additionalProperties": False
-                                }
+                                    "required": [
+                                        "test_name",
+                                        "explanation",
+                                        "problem_source",
+                                        "suggestion",
+                                    ],
+                                    "additionalProperties": False,
+                                },
                             }
                         },
                         "required": ["problems"],
-                        "additionalProperties": False
+                        "additionalProperties": False,
                     },
-                    "strict": True
-                }
+                    "strict": True,
+                },
             },
             messages=[
                 {
                     "role": "system",
-                    "content": dedent("""
+                    "content": dedent(
+                        """
                         You will be provided the source code of a Python file, the code of a pytest script performing unit tests
                         on that file, and the file structure of the Python project the source is part of. After running pytest,
                         some of the unit tests have failed. The user will provide the name of each unit test followed by the report
@@ -130,11 +149,13 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
                         natural language.
                         
                         Your output should be a JSON object.
-                    """)
+                    """
+                    ),
                 },
                 {
                     "role": "user",
-                    "content": dedent(f"""
+                    "content": dedent(
+                        f"""
                         # Source file #
                         ```python
                         {source_code}
@@ -150,37 +171,47 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
 
                         # Failed tests #
                         {test_summary}
-                    """)
-                }
-            ]
+                    """
+                    ),
+                },
+            ],
         )
-            
+
         raw_res = completion.choices[0].message.content
         logger.debug("[LLM response]\n%s", raw_res)
         response = json.loads(raw_res)
         return response["problems"]
 
 
-def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_feedback: list[dict], syntax_iterations: int):
-    tests_to_fix = list(filter(lambda x: x.get("problem_source") == "test", critic_feedback))
+def integrate_feedback(
+    client: OpenAI,
+    source_path: str,
+    test_path: str,
+    critic_feedback: list[dict],
+    syntax_iterations: int,
+):
+    tests_to_fix = list(
+        filter(lambda x: x.get("problem_source") == "test", critic_feedback)
+    )
     if len(tests_to_fix) == 0:
         logger.info("(%s) All unit tests are correct", test_path)
         return True
-    
+
     logger.info("(%s) %i test(s) are fixable", test_path, len(tests_to_fix))
-    
+
     with open(source_path, "r") as sf, open(test_path, "r") as tf:
         source_code = sf.read()
         test_code = tf.read()
 
         suggested_fixes = "\n\n".join(
-            "\n".join([
-                f"# {t.get('test_name')} #"
-                "## Explanation ##",
-                t.get("explanation"),
-                "## Suggested Fix ##",
-                t.get("suggestion")
-            ])
+            "\n".join(
+                [
+                    f"# {t.get('test_name')} #" "## Explanation ##",
+                    t.get("explanation"),
+                    "## Suggested Fix ##",
+                    t.get("suggestion"),
+                ]
+            )
             for t in tests_to_fix
         )
 
@@ -196,18 +227,19 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
                             # All output that is not part of the resulting file
                             "scratchpad": {"type": "string"},
                             # The unit test with the fix implemented
-                            "updated_file": {"type": "string"}
+                            "updated_file": {"type": "string"},
                         },
                         "required": ["scratchpad", "updated_file"],
-                        "additionalProperties": False
+                        "additionalProperties": False,
                     },
-                    "strict": True
-                }
+                    "strict": True,
+                },
             },
             messages=[
                 {
                     "role": "system",
-                    "content": dedent("""
+                    "content": dedent(
+                        """
                         You are a programmer writing unit tests for a Python module. You have sent your source code
                         and unit testing to be reviewed by another person, who has run the unit tests and noticed that
                         some tests have failed.
@@ -216,11 +248,13 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
                         erroneous test function and suggest fixes. Your job is to update the test file with these changes.
                                       
                         Your response should be output in JSON, with `updated_file` containing only the full updated test script.
-                    """)
+                    """
+                    ),
                 },
                 {
                     "role": "user",
-                    "content": dedent(f"""
+                    "content": dedent(
+                        f"""
                         It looks like some of the tests have failed. For reference, here is your source code:
                         ```python
                         {source_code}
@@ -233,17 +267,18 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
 
                         Here are the tests that failed, and my suggested fixes:
                         {suggested_fixes}
-                    """)
-                }
-            ]
+                    """
+                    ),
+                },
+            ],
         )
-        
+
         # Parse LLM response
         raw_res = completion.choices[0].message.content
         logger.debug("[LLM response]\n%s", raw_res)
         response = json.loads(raw_res)
         new_file = response["updated_file"]
-    
+
         # Ensure correct syntax of the test file
         logger.info("(%s) Testing for valid response syntax", test_path)
         new_file = util.validate_syntax(client, new_file, syntax_iterations)
@@ -256,7 +291,9 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
     return False
 
 
-def critic_process(client: OpenAI, source_path: str, test_path: str, max_iter=10, syntax_iterations=10):
+def critic_process(
+    client: OpenAI, source_path: str, test_path: str, max_iter=10, syntax_iterations=10
+):
     """
     Executes the entire critic process: running tests, analyzing failures, and providing feedback.
     """
@@ -265,8 +302,11 @@ def critic_process(client: OpenAI, source_path: str, test_path: str, max_iter=10
         if not success and report:
             analysis = get_failed_tests(report)
             feedback = generate_feedback(client, source_path, test_path, analysis)
-            finished = integrate_feedback(client, source_path, test_path, feedback, syntax_iterations)
-            if finished: break
+            finished = integrate_feedback(
+                client, source_path, test_path, feedback, syntax_iterations
+            )
+            if finished:
+                break
         elif report is None:
             logger.error("Tests were unable to execute!")
             return
