@@ -81,22 +81,29 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
                 "json_schema": {
                     "name": "suggest_test_fixes",
                     "schema": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                # The name of the test function
-                                "test_name": {"type": "string"},
-                                # Explanation of the problem with the unit test
-                                "explanation": {"type": "string"},
-                                # Whether the problem is attributed to bad source code or a unit test issue
-                                "problem_source": {"type": "string", "enum": ["source", "test"]},
-                                # Suggestion for how to fix the problem
-                                "suggestion": {"type": "string"}
-                            },
-                            "required": ["test_name", "explanation", "problem_source", "suggestion"],
-                            "additionalProperties": False
-                        }
+                        "type": "object",
+                        "properties": {
+                            "problems": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        # The name of the test function
+                                        "test_name": {"type": "string"},
+                                        # Explanation of the problem with the unit test
+                                        "explanation": {"type": "string"},
+                                        # Whether the problem is attributed to bad source code or a unit test issue
+                                        "problem_source": {"type": "string", "enum": ["source", "test"]},
+                                        # Suggestion for how to fix the problem
+                                        "suggestion": {"type": "string"}
+                                    },
+                                    "required": ["test_name", "explanation", "problem_source", "suggestion"],
+                                    "additionalProperties": False
+                                }
+                            }
+                        },
+                        "required": ["problems"],
+                        "additionalProperties": False
                     },
                     "strict": True
                 }
@@ -151,7 +158,7 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
         raw_res = completion.choices[0].message.content
         logger.debug("[LLM response]\n%s", raw_res)
         response = json.loads(raw_res)
-        return response
+        return response["problems"]
 
 
 def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_feedback: list[dict], syntax_iterations: int):
@@ -167,13 +174,13 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
         test_code = tf.read()
 
         suggested_fixes = "\n\n".join(
-            "\n".join(
+            "\n".join([
                 f"# {t.get('test_name')} #"
                 "## Explanation ##",
                 t.get("explanation"),
                 "## Suggested Fix ##",
                 t.get("suggestion")
-            )
+            ])
             for t in tests_to_fix
         )
 

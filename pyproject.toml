@@ -9,6 +9,7 @@ dependencies = [
     "libcst",
     "platformdirs",
     "pytest>=8.3.3",
+    "pytest-json-report",
     "colorama>=0.4.6",
 ]
 
