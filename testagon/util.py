@@ -190,7 +190,7 @@ class DocstringEditor(cst.CSTTransformer):
                 # Update the docstring
                 new_docstring = self.updater(original_node.get_docstring())
                 docstring_node = cst.SimpleStatementLine(
-                    [cst.Expr(cst.SimpleString(f'"""{new_docstring}"""'))]
+                    [cst.Expr(cst.SimpleString(f'"""\n{new_docstring}\n"""'))]
                 )
                 # Replace the first statement (the existing docstring)
                 body = [docstring_node] + list(updated_node.body.body[1:])
@@ -198,7 +198,7 @@ class DocstringEditor(cst.CSTTransformer):
                 # Add the new docstring as the first statement
                 new_docstring = self.updater("")
                 docstring_node = cst.SimpleStatementLine(
-                    [cst.Expr(cst.SimpleString(f'"""{new_docstring}"""'))]
+                    [cst.Expr(cst.SimpleString(f'"""\n{new_docstring}\n"""'))]
                 )
                 body = [docstring_node] + list(updated_node.body.body)
             return updated_node.with_changes(body=cst.IndentedBlock(body))
@@ -214,3 +214,10 @@ def update_docstring(
     transformer = DocstringEditor(function_name, updater)
     new_tree = tree.visit(transformer)
     return new_tree.code
+
+
+def get_all_dirs(dirname):
+    subfolders = [f.path for f in os.scandir(dirname) if f.is_dir()]
+    for dirname in list(subfolders):
+        subfolders.extend(get_all_dirs(dirname))
+    return subfolders
