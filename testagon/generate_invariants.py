@@ -2,6 +2,7 @@ import os
 import json
 from openai import OpenAI
 from textwrap import dedent
+from testagon.logger import logger
 from testagon.util import update_docstring, get_model
 
 def generate_invariants(client: OpenAI, file_path: str):
@@ -187,6 +188,7 @@ def generate_invariants(client: OpenAI, file_path: str):
 
         # Parse LLM response
         raw_res = completion.choices[0].message.content
+        logger.debug("[LLM response]\n%s", raw_res)
         response = json.loads(raw_res)
 
         # Insert the generated invariants into the docstrings of the target file
