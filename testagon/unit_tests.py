@@ -24,7 +24,7 @@ def generate_initial(client: OpenAI, file_path: str, test_path: str, syntax_iter
     logger.info("(%s) Providing LLM context and prompting for initial test generation...", test_path)
 
     completion = client.chat.completions.create(
-      model=os.getenv("MODEL"),
+      model=util.get_model(),
       response_format={
         "type": "json_schema",
         "json_schema": {

@@ -4,6 +4,8 @@ import ast
 import traceback
 import json
 import libcst as cst
+import platformdirs
+from configparser import ConfigParser
 from openai import OpenAI
 from textwrap import dedent
 from testagon.logger import logger
@@ -34,6 +36,31 @@ def get_source_programs():
     return python_files
 
 
+def read_config():
+    """Reads the Testagon config file into a parser"""
+    dir = platformdirs.user_config_dir(appname="Testagon")
+    os.makedirs(dir, exist_ok=True)
+    config = ConfigParser()
+    config.read(os.path.join(dir, "config.ini"))
+    if "DEFAULT" not in config:
+        config["DEFAULT"] = {}
+        config["DEFAULT"]["model"] = "oai-gpt-4o-structured"
+    return config
+
+
+def get_model():
+    config = read_config()
+    return config["DEFAULT"].get("model", "oai-gpt-4o-structured")
+
+
+def write_config(config: ConfigParser):
+    """Write a config parser to the Testagon config file"""
+    dir = platformdirs.user_config_dir(appname="Testagon")
+    os.makedirs(dir, exist_ok=True)
+    with open(os.path.join(dir, "config.ini"), "w") as f:
+        config.write(f)
+
+
 def is_valid_syntax(source: str):
     """
     Checks if the syntax of a Python program from `source` is valid
@@ -60,7 +87,7 @@ def validate_syntax(client: OpenAI, source: str, max_iter=10):
 
     for i in range(0, max_iter):
         completion = client.chat.completions.create(
-        model=os.getenv("MODEL"),
+        model=util.get_model(),
         response_format={
             "type": "json_schema",
             "json_schema": {

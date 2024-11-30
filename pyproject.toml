@@ -6,8 +6,8 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "openai",
-    "python-dotenv",
     "libcst",
+    "platformdirs",
     "pytest>=8.3.3",
     "colorama>=0.4.6",
 ]

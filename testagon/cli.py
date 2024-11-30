@@ -2,7 +2,6 @@ import argparse
 import os
 import threading
 from openai import OpenAI
-from dotenv import load_dotenv
 import testagon.unit_tests as unit_tests
 import testagon.util as util
 import testagon.critic as critic
@@ -10,10 +9,16 @@ import logging
 from testagon.generate_invariants import generate_invariants
 from testagon.logger import logger, configure_logger
 
-# Initialize OpenAI client
-# TODO: Doesn't get the right key when using the CLI from a pip package
-load_dotenv()
-client = OpenAI(api_key=os.getenv("API_KEY"), base_url=os.getenv("BASE_URL"))
+
+def configure(api_key: str | None, base_url: str | None, model: str | None):
+	config = util.read_config()
+	if api_key is not None:
+		config["DEFAULT"]["api_key"] = api_key
+	if base_url is not None:
+		config["DEFAULT"]["base_url"] = base_url
+	if model is not None:
+		config["DEFAULT"]["model"] = model
+	util.write_config(config)
 
 
 def init_project():
@@ -28,6 +33,8 @@ def init_project():
 
 def generate_tests(auto: bool, syntax_iterations: int, critic_iterations: int):
 	TESTDIR_STRUCTURE = "tests/testagon"
+	config = util.read_config()
+	client = OpenAI(api_key=config["DEFAULT"].get("api_key"), base_url=config["DEFAULT"].get("base_url"))
 
 	# Spawn threads to generate invariants for each Python source file
 	logger.info("Generating invariants...")
@@ -86,6 +93,8 @@ def run_tests():
 	subprocess.run("python3 -m pytest tests/testagon".split())
 
 def main():
+	configure(None, None, None)
+
 	parser = argparse.ArgumentParser(
 		description="A tool to determine logic invariants, and generate tests for them."
 	)
@@ -135,6 +144,30 @@ def main():
 	# Subcommand for 'init'
 	test_parser = subparsers.add_parser("test", help="Run testagon tests.")
 
+	# Subcommand for 'config'
+	api_key_parser = subparsers.add_parser("config", help="Modifies the config options for Testagon.")
+
+	api_key_parser.add_argument(
+		"-k",
+		"--key",
+		type=str, 
+		help="The OpenAI API key to use."
+	)
+
+	api_key_parser.add_argument(
+		"-u",
+		"--url",
+		type=str, 
+		help="The base URL to send all OpenAI queries to."
+	)
+
+	api_key_parser.add_argument(
+		"-m",
+		"--model",
+		type=str, 
+		help="The LLM model to use."
+	)
+
 	args = parser.parse_args()
 	configure_logger(getattr(logging, args.log_level))
 
@@ -144,6 +177,9 @@ def main():
 		generate_tests(args.auto, args.syntax_iterations, args.critic_iterations)
 	elif args.command == "test":
 		run_tests()
+	elif args.command == "config":
+		configure(args.key, args.url, args.model)
+		logger.info("Updated config file.")
 	else:
 		parser.print_help()
 

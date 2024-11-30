@@ -70,7 +70,7 @@ def generate_feedback(client: OpenAI, source_path: str, test_path: str, failed_t
         )
 
         completion = client.chat.completions.create(
-            model=os.getenv("MODEL"),
+            model=util.get_model(),
             response_format={
                 "type": "json_schema",
                 "json_schema": {
@@ -173,7 +173,7 @@ def integrate_feedback(client: OpenAI, source_path: str, test_path: str, critic_
         )
 
         completion = client.chat.completions.create(
-            model=os.getenv("MODEL"),
+            model=util.get_model(),
             response_format={
                 "type": "json_schema",
                 "json_schema": {

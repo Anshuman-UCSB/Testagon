@@ -2,7 +2,7 @@ import os
 import json
 from openai import OpenAI
 from textwrap import dedent
-from testagon.util import update_docstring
+from testagon.util import update_docstring, get_model
 
 def generate_invariants(client: OpenAI, file_path: str):
     """
@@ -15,7 +15,7 @@ def generate_invariants(client: OpenAI, file_path: str):
         
         # Call the LLM to analyze the file and generate invariants
         completion = client.chat.completions.create(
-            model=os.getenv("MODEL"),
+            model=get_model(),
             response_format={
                 "type": "json_schema",
                 "json_schema": {
