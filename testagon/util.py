@@ -10,13 +10,15 @@ from openai import OpenAI
 from textwrap import dedent
 from testagon.logger import logger
 
-def get_project_structure(path: str="."):
+
+def get_project_structure(path: str = "."):
     """Lists all files (using their path relative to the project root) recursively in the project directory"""
     files = []
     dir = os.path.realpath(os.path.join(os.getcwd(), path))
     for f in os.listdir(dir):
         new_path = os.path.join(path, f)
-        if f.startswith("."): continue
+        if f.startswith("."):
+            continue
         if os.path.isfile(new_path):
             files.append(new_path)
         elif os.path.isdir(new_path):
@@ -29,9 +31,12 @@ def get_source_programs():
     files = get_project_structure()
     python_files = []
     for path in files:
-        if path.startswith("./tests/"): continue
-        if not path.endswith(".py"): continue
-        if path.startswith("test"): continue
+        if path.startswith("./tests/"):
+            continue
+        if not path.endswith(".py"):
+            continue
+        if "test_" in path:
+            continue
         python_files.append(path)
     return python_files
 
@@ -70,7 +75,7 @@ def is_valid_syntax(source: str):
         return True, None
     except SyntaxError:
         return False, traceback.format_exc()
-  
+
 
 def validate_syntax(client: OpenAI, source: str, max_iter=10):
     """
@@ -79,7 +84,8 @@ def validate_syntax(client: OpenAI, source: str, max_iter=10):
     We don't expect the LLM to output invalid code, but we should try to rectify it just in case
     """
     (valid, err) = is_valid_syntax(source)
-    if valid: return source
+    if valid:
+        return source
 
     updated_source = source
     last_err = err
@@ -87,42 +93,45 @@ def validate_syntax(client: OpenAI, source: str, max_iter=10):
 
     for i in range(0, max_iter):
         completion = client.chat.completions.create(
-        model=get_model(),
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "validate_syntax",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        # Explanation of the syntax error
-                        "explanation": {"type": "string"},
-                        # Explanation of the fix to implement
-                        "fix": {"type": "string"},
-                        # The source file with the fix implemented
-                        "updated_file": {"type": "string"}
+            model=get_model(),
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "validate_syntax",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            # Explanation of the syntax error
+                            "explanation": {"type": "string"},
+                            # Explanation of the fix to implement
+                            "fix": {"type": "string"},
+                            # The source file with the fix implemented
+                            "updated_file": {"type": "string"},
+                        },
+                        "required": ["explanation", "fix", "updated_file"],
+                        "additionalProperties": False,
                     },
-                    "required": ["explanation", "fix", "updated_file"],
-                    "additionalProperties": False
+                    "strict": True,
                 },
-                "strict": True
-            }
-        },
-        messages=[
-            {
-            "role": "system",
-            "content": dedent("""
+            },
+            messages=[
+                {
+                    "role": "system",
+                    "content": dedent(
+                        """
                 The user will provide a Python file that is syntactically incorrect. They will also
                 provide a traceback of the syntax error, informing you where it is. `explanation` is
                 where you should describe the syntax error, `fix` is where you should describe how
                 to fix it, and `updated_file` is the entire file content with the syntax error fixed. 
                 Do not change the behavior of the program except to fix the syntax error. You should
                 output your response as a JSON object.
-            """)
-            },
-            {
-            "role": "user",
-            "content": dedent(f"""
+            """
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": dedent(
+                        f"""
                 # File #
                 ```python
                 {updated_source}
@@ -130,9 +139,10 @@ def validate_syntax(client: OpenAI, source: str, max_iter=10):
 
                 # Error information #
                 `{last_err}`
-            """)
-            }
-        ]
+            """
+                    ),
+                },
+            ],
         )
 
         response = json.loads(completion.choices[0].message.content)
@@ -153,6 +163,7 @@ def validate_syntax(client: OpenAI, source: str, max_iter=10):
 
 class DocstringEditor(cst.CSTTransformer):
     """Transformer class to visit a target function and apply an update function to its docstring"""
+
     def __init__(self, function_name: str, updater: typing.Callable[[str], str]):
         self.function_name = function_name
         self.updater = updater
@@ -171,9 +182,9 @@ class DocstringEditor(cst.CSTTransformer):
                 arg1 = original_node.params.params[i].name.value
                 arg2 = temp.params.params[i].name.value
                 if arg1 != arg2:
-                    return False;
+                    return False
             return True
-            
+
         if is_same_func(original_node, temp):
             if original_node.get_docstring():
                 # Update the docstring
@@ -193,8 +204,11 @@ class DocstringEditor(cst.CSTTransformer):
             return updated_node.with_changes(body=cst.IndentedBlock(body))
         return updated_node
 
+
 # TODO: May want to have this take in an AST/CST directly so we can disambiguate conflicting function names ahead of time
-def update_docstring(source: str, function_name: str, updater: typing.Callable[[str], str]):
+def update_docstring(
+    source: str, function_name: str, updater: typing.Callable[[str], str]
+):
     """Updates `function_name`'s docstring in the `source` Python code using the `updater` function"""
     tree = cst.parse_module(source)
     transformer = DocstringEditor(function_name, updater)
