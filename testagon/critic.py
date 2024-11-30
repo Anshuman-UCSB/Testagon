@@ -1,4 +1,5 @@
 import os
+import tempfile
 import json
 import subprocess
 from openai import OpenAI
@@ -12,22 +13,26 @@ def run_tests(test_file_path: str):
     """
     try:
         # Execute pytest and capture output
+        (f, report_path) = tempfile.mkstemp()
         result = subprocess.run(
-            ["pytest", test_file_path, "--json-report", "--json-report-file=report.json"],
+            ["pytest", test_file_path, "--json-report", f"--json-report-file={report_path}"],
             capture_output=True,
             text=True
         )
         # Check if pytest executed successfully
         if result.returncode == 0:
             logger.debug("All tests passed successfully!")
+            os.remove(report_path)
             return None, True
         else:
             logger.debug("Some tests failed. See details below:")
-            with open("report.json") as report_file:
-                report = json.load(report_file)
+            with open("report.json") as f:
+                report = json.load(f)
+            os.remove(report_path)
             return report, False
     except Exception as e:
         logger.error(f"Error running tests: {e}")
+        os.remove(report_path)
         return None, False
 
 

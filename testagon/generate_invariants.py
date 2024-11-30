@@ -59,6 +59,7 @@ def generate_invariants(client: OpenAI, file_path: str):
                         "required": ["functions"],
                         "additionalProperties": False
                     },
+                    "strict": True
                 },
             },
             messages=[

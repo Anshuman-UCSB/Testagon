@@ -87,7 +87,7 @@ def validate_syntax(client: OpenAI, source: str, max_iter=10):
 
     for i in range(0, max_iter):
         completion = client.chat.completions.create(
-        model=util.get_model(),
+        model=get_model(),
         response_format={
             "type": "json_schema",
             "json_schema": {
