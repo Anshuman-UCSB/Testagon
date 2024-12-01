@@ -23,8 +23,8 @@ We support python >= 3.9
 # How to Use
 
 - `testagon init` in your project directory
-- `testagon generate` to generate unit tests
-- `testagon test`
+- `testagon generate` to generate unit tests using the actor-critic method
+- `testagon test` to evaluate your program on the unit tests
 
 # References
 <a id="1">[1]</a>
