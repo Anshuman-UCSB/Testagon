@@ -51,3 +51,11 @@ Lemieux, Caroline, Jeevana Priya Inala, Shuvendu K. Lahiri, and Siddhartha Sen. 
 # Misc
 - Model used: GPT-4o with structured JSON output support
 - Team members: Amey Walimbe, Anshuman Dash, Carson Kopper, Tim Kim
+
+## Testing Repositories
+- https://github.com/Anshuman-UCSB/Decrypt
+- https://github.com/TheAlgorithms/Python
+- https://github.com/Downmoto/algos
+- https://github.com/Anshuman-UCSB/disclog
+- https://github.com/Downmoto/markdown
+- https://github.com/Downmoto/typy
